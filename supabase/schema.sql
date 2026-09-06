@@ -130,7 +130,12 @@ END $$;
 -- ============================================================
 -- OTOMATISASI BUKU KAS
 -- ============================================================
--- Barang Masuk dianggap pembayaran tunai.
+-- Setiap transaksi sumber memiliki satu baris ledger kas berdasarkan reference_id.
+-- INSERT  -> membuat ledger.
+-- UPDATE  -> ledger lama dihapus lalu dibuat ulang dari data terbaru.
+-- DELETE  -> ledger terkait ikut dihapus.
+-- Dengan pola ini, edit/hapus transaksi tidak meninggalkan kas yatim.
+
 CREATE OR REPLACE FUNCTION public.record_purchase_cash() RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.cash_transactions(date, transaction_type, amount, reference_id, note)
@@ -159,9 +164,73 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION public.cleanup_cash_by_reference() RETURNS trigger AS $$
+BEGIN
+  DELETE FROM public.cash_transactions
+  WHERE reference_id = OLD.id;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.sync_purchase_cash() RETURNS trigger AS $$
+BEGIN
+  DELETE FROM public.cash_transactions WHERE reference_id = OLD.id AND transaction_type = 'PURCHASE';
+  INSERT INTO public.cash_transactions(date, transaction_type, amount, reference_id, note)
+  VALUES (NEW.date, 'PURCHASE', -ABS(NEW.total_cost), NEW.id, COALESCE(NEW.note, 'Pembayaran barang masuk'));
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.sync_personal_cash() RETURNS trigger AS $$
+BEGIN
+  DELETE FROM public.cash_transactions WHERE reference_id = OLD.id AND transaction_type = 'PERSONAL_WITHDRAWAL';
+  IF NEW.type = 'UANG_CASH' AND COALESCE(NEW.amount_cash, 0) > 0 THEN
+    INSERT INTO public.cash_transactions(date, transaction_type, amount, reference_id, note)
+    VALUES (NEW.date, 'PERSONAL_WITHDRAWAL', -ABS(NEW.amount_cash), NEW.id, COALESCE(NEW.note, 'Pengambilan uang pribadi'));
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.sync_opname_sales_cash() RETURNS trigger AS $$
+BEGIN
+  DELETE FROM public.cash_transactions WHERE reference_id = OLD.id AND transaction_type = 'SALE';
+  IF COALESCE(NEW.total_sales_amount, 0) > 0 THEN
+    INSERT INTO public.cash_transactions(date, transaction_type, amount, reference_id, note)
+    VALUES (NEW.date, 'SALE', ABS(NEW.total_sales_amount), NEW.id, 'Hasil penjualan dari Rekap Malam');
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 DROP TRIGGER IF EXISTS trg_purchase_cash ON public.purchases;
 CREATE TRIGGER trg_purchase_cash AFTER INSERT ON public.purchases FOR EACH ROW EXECUTE FUNCTION public.record_purchase_cash();
+
+DROP TRIGGER IF EXISTS trg_purchase_cash_update ON public.purchases;
+CREATE TRIGGER trg_purchase_cash_update AFTER UPDATE ON public.purchases FOR EACH ROW EXECUTE FUNCTION public.sync_purchase_cash();
+
+DROP TRIGGER IF EXISTS trg_purchase_cash_delete ON public.purchases;
+CREATE TRIGGER trg_purchase_cash_delete AFTER DELETE ON public.purchases FOR EACH ROW EXECUTE FUNCTION public.cleanup_cash_by_reference();
+
 DROP TRIGGER IF EXISTS trg_personal_cash ON public.personal_usages;
 CREATE TRIGGER trg_personal_cash AFTER INSERT ON public.personal_usages FOR EACH ROW EXECUTE FUNCTION public.record_personal_cash();
+
+DROP TRIGGER IF EXISTS trg_personal_cash_update ON public.personal_usages;
+CREATE TRIGGER trg_personal_cash_update AFTER UPDATE ON public.personal_usages FOR EACH ROW EXECUTE FUNCTION public.sync_personal_cash();
+
+DROP TRIGGER IF EXISTS trg_personal_cash_delete ON public.personal_usages;
+CREATE TRIGGER trg_personal_cash_delete AFTER DELETE ON public.personal_usages FOR EACH ROW EXECUTE FUNCTION public.cleanup_cash_by_reference();
+
 DROP TRIGGER IF EXISTS trg_opname_sales_cash ON public.daily_stock_opnames;
 CREATE TRIGGER trg_opname_sales_cash AFTER INSERT ON public.daily_stock_opnames FOR EACH ROW EXECUTE FUNCTION public.record_opname_sales_cash();
+
+DROP TRIGGER IF EXISTS trg_opname_sales_cash_update ON public.daily_stock_opnames;
+CREATE TRIGGER trg_opname_sales_cash_update AFTER UPDATE ON public.daily_stock_opnames FOR EACH ROW EXECUTE FUNCTION public.sync_opname_sales_cash();
+
+DROP TRIGGER IF EXISTS trg_opname_sales_cash_delete ON public.daily_stock_opnames;
+CREATE TRIGGER trg_opname_sales_cash_delete AFTER DELETE ON public.daily_stock_opnames FOR EACH ROW EXECUTE FUNCTION public.cleanup_cash_by_reference();
+
+-- Mencegah satu transaksi sumber membuat ledger kas ganda.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cash_transactions_source
+ON public.cash_transactions(transaction_type, reference_id)
+WHERE reference_id IS NOT NULL;
