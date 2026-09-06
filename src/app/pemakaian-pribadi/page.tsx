@@ -776,7 +776,7 @@ export default function PemakaianPribadiPage() {
                         )}
 
                         {usage.note && (
-                          <p className="text-xs text-gray-500 italic mt-0.5 truncate">"{usage.note}"</p>
+                          <p className="text-xs text-gray-500 italic mt-0.5 truncate">&quot;{usage.note}&quot;</p>
                         )}
                       </div>
 
