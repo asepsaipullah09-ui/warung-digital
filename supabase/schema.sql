@@ -130,12 +130,6 @@ END $$;
 -- ============================================================
 -- OTOMATISASI BUKU KAS
 -- ============================================================
--- Setiap transaksi sumber memiliki satu baris ledger kas berdasarkan reference_id.
--- INSERT  -> membuat ledger.
--- UPDATE  -> ledger lama dihapus lalu dibuat ulang dari data terbaru.
--- DELETE  -> ledger terkait ikut dihapus.
--- Dengan pola ini, edit/hapus transaksi tidak meninggalkan kas yatim.
-
 CREATE OR REPLACE FUNCTION public.record_purchase_cash() RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.cash_transactions(date, transaction_type, amount, reference_id, note)
@@ -166,8 +160,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION public.cleanup_cash_by_reference() RETURNS trigger AS $$
 BEGIN
-  DELETE FROM public.cash_transactions
-  WHERE reference_id = OLD.id;
+  DELETE FROM public.cash_transactions WHERE reference_id = OLD.id;
   RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
@@ -205,32 +198,68 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_purchase_cash ON public.purchases;
 CREATE TRIGGER trg_purchase_cash AFTER INSERT ON public.purchases FOR EACH ROW EXECUTE FUNCTION public.record_purchase_cash();
-
 DROP TRIGGER IF EXISTS trg_purchase_cash_update ON public.purchases;
 CREATE TRIGGER trg_purchase_cash_update AFTER UPDATE ON public.purchases FOR EACH ROW EXECUTE FUNCTION public.sync_purchase_cash();
-
 DROP TRIGGER IF EXISTS trg_purchase_cash_delete ON public.purchases;
 CREATE TRIGGER trg_purchase_cash_delete AFTER DELETE ON public.purchases FOR EACH ROW EXECUTE FUNCTION public.cleanup_cash_by_reference();
 
 DROP TRIGGER IF EXISTS trg_personal_cash ON public.personal_usages;
 CREATE TRIGGER trg_personal_cash AFTER INSERT ON public.personal_usages FOR EACH ROW EXECUTE FUNCTION public.record_personal_cash();
-
 DROP TRIGGER IF EXISTS trg_personal_cash_update ON public.personal_usages;
 CREATE TRIGGER trg_personal_cash_update AFTER UPDATE ON public.personal_usages FOR EACH ROW EXECUTE FUNCTION public.sync_personal_cash();
-
 DROP TRIGGER IF EXISTS trg_personal_cash_delete ON public.personal_usages;
 CREATE TRIGGER trg_personal_cash_delete AFTER DELETE ON public.personal_usages FOR EACH ROW EXECUTE FUNCTION public.cleanup_cash_by_reference();
 
 DROP TRIGGER IF EXISTS trg_opname_sales_cash ON public.daily_stock_opnames;
 CREATE TRIGGER trg_opname_sales_cash AFTER INSERT ON public.daily_stock_opnames FOR EACH ROW EXECUTE FUNCTION public.record_opname_sales_cash();
-
 DROP TRIGGER IF EXISTS trg_opname_sales_cash_update ON public.daily_stock_opnames;
 CREATE TRIGGER trg_opname_sales_cash_update AFTER UPDATE ON public.daily_stock_opnames FOR EACH ROW EXECUTE FUNCTION public.sync_opname_sales_cash();
-
 DROP TRIGGER IF EXISTS trg_opname_sales_cash_delete ON public.daily_stock_opnames;
 CREATE TRIGGER trg_opname_sales_cash_delete AFTER DELETE ON public.daily_stock_opnames FOR EACH ROW EXECUTE FUNCTION public.cleanup_cash_by_reference();
 
--- Mencegah satu transaksi sumber membuat ledger kas ganda.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_cash_transactions_source
 ON public.cash_transactions(transaction_type, reference_id)
 WHERE reference_id IS NOT NULL;
+
+-- ============================================================
+-- PENGAMAN STOK: movement otomatis dibersihkan saat sumber dihapus.
+-- Ini mencegah stok "hantu" jika transaksi sumber dihapus langsung.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.cleanup_purchase_stock_movements() RETURNS trigger AS $$
+BEGIN
+  DELETE FROM public.stock_movements
+  WHERE reference_id = OLD.id AND movement_type = 'PURCHASE';
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.cleanup_personal_stock_movements() RETURNS trigger AS $$
+BEGIN
+  DELETE FROM public.stock_movements
+  WHERE reference_id = OLD.id AND movement_type = 'PERSONAL_USE';
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION public.cleanup_opname_stock_movements() RETURNS trigger AS $$
+BEGIN
+  DELETE FROM public.stock_movements
+  WHERE reference_id = OLD.id AND movement_type = 'SALE';
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_purchase_stock_delete ON public.purchases;
+CREATE TRIGGER trg_purchase_stock_delete
+AFTER DELETE ON public.purchases
+FOR EACH ROW EXECUTE FUNCTION public.cleanup_purchase_stock_movements();
+
+DROP TRIGGER IF EXISTS trg_personal_stock_delete ON public.personal_usages;
+CREATE TRIGGER trg_personal_stock_delete
+AFTER DELETE ON public.personal_usages
+FOR EACH ROW EXECUTE FUNCTION public.cleanup_personal_stock_movements();
+
+DROP TRIGGER IF EXISTS trg_opname_stock_delete ON public.daily_stock_opnames;
+CREATE TRIGGER trg_opname_stock_delete
+AFTER DELETE ON public.daily_stock_opnames
+FOR EACH ROW EXECUTE FUNCTION public.cleanup_opname_stock_movements();
