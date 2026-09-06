@@ -1,48 +1,54 @@
-import { Product, ProductUnit } from '@/types';
+import { Product } from '@/types';
 
 export interface OpnameCalculationResult {
   productId: string;
   systemStockBase: number;
   physicalStockBase: number;
-  differenceBase: number; // systemStockBase - physicalStockBase (Total items out)
+  differenceBase: number;
   personalUseBase: number;
-  calculatedSalesBase: number; // differenceBase - personalUseBase
+  calculatedSalesBase: number;
   sellingAmount: number;
   costAmount: number;
   profitAmount: number;
+  personalUseCostAmount: number;
+  netProfitAfterPersonalUse: number;
   isPhysicalHigherThanSystem: boolean;
   warningMessage?: string;
 }
 
-/**
- * Returns the effective cost price and selling price PER BASE UNIT for a product.
- * Prefers default unit or unit with conversion = 1, otherwise derives price per base unit.
- */
-export function getBasePrices(product: Product): { costPerBase: number; sellingPerBase: number } {
+/** Harga modal dan jual per satuan dasar (base unit). */
+export function getBasePrices(product: Product): {
+  costPerBase: number;
+  sellingPerBase: number;
+} {
   if (!product.units || product.units.length === 0) {
     return { costPerBase: 0, sellingPerBase: 0 };
   }
 
-  // 1. Look for explicit base unit (conversion = 1)
   const baseUnit = product.units.find((u) => u.conversion_to_base === 1);
-  if (baseUnit && baseUnit.selling_price > 0) {
+  if (baseUnit) {
     return {
-      costPerBase: baseUnit.cost_price,
-      sellingPerBase: baseUnit.selling_price,
+      costPerBase: Number(baseUnit.cost_price || 0),
+      sellingPerBase: Number(baseUnit.selling_price || 0),
     };
   }
 
-  // 2. Look for default unit
-  const defaultUnit = product.units.find((u) => u.is_default) || product.units[0];
-  const conv = defaultUnit.conversion_to_base || 1;
+  const defaultUnit =
+    product.units.find((u) => u.is_default) || product.units[0];
+  const conversion = Number(defaultUnit.conversion_to_base || 1);
+
   return {
-    costPerBase: defaultUnit.cost_price / conv,
-    sellingPerBase: defaultUnit.selling_price / conv,
+    costPerBase: Number(defaultUnit.cost_price || 0) / conversion,
+    sellingPerBase: Number(defaultUnit.selling_price || 0) / conversion,
   };
 }
 
 /**
- * Core calculation function for Nightly Stock Opname.
+ * Perhitungan rekap malam.
+ *
+ * Penting: pemakaian pribadi sudah dicatat sebagai PERSONAL_USE (-stok)
+ * di stock_movements. Karena itu tidak boleh dikurangkan lagi dari
+ * selisih system - physical, agar tidak double-counting.
  */
 export function calculateOpnameOutput(
   product: Product,
@@ -54,22 +60,22 @@ export function calculateOpnameOutput(
   const differenceBase = systemStockBase - physicalStockBase;
 
   let calculatedSalesBase = 0;
-  let warningMessage: string | undefined = undefined;
+  let warningMessage: string | undefined;
 
   if (isPhysicalHigherThanSystem) {
     warningMessage = `Jumlah fisik (${physicalStockBase} ${product.base_unit}) lebih besar dari stok sistem (${systemStockBase} ${product.base_unit}). Periksa kembali stok atau catat sebagai koreksi stok.`;
-    calculatedSalesBase = 0;
   } else {
-    // Total keluar = systemStockBase - physicalStockBase
-    // Penjualan = Total keluar - Pemakaian Pribadi
-    calculatedSalesBase = Math.max(0, differenceBase - personalUseBase);
+    // PERSONAL_USE sudah mengurangi stok sistem lewat stock_movements.
+    // Jadi selisih stok = penjualan yang belum dicatat.
+    calculatedSalesBase = Math.max(0, differenceBase);
   }
 
   const { costPerBase, sellingPerBase } = getBasePrices(product);
-
   const sellingAmount = Math.round(calculatedSalesBase * sellingPerBase);
   const costAmount = Math.round(calculatedSalesBase * costPerBase);
   const profitAmount = sellingAmount - costAmount;
+  const personalUseCostAmount = Math.round(personalUseBase * costPerBase);
+  const netProfitAfterPersonalUse = profitAmount - personalUseCostAmount;
 
   return {
     productId: product.id,
@@ -81,6 +87,8 @@ export function calculateOpnameOutput(
     sellingAmount,
     costAmount,
     profitAmount,
+    personalUseCostAmount,
+    netProfitAfterPersonalUse,
     isPhysicalHigherThanSystem,
     warningMessage,
   };
