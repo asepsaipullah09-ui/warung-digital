@@ -7,10 +7,10 @@ export interface Category {
 export interface ProductUnit {
   id: string;
   product_id: string;
-  unit_name: string; // e.g. Batang, Bungkus, Dus, Botol, Pcs
-  conversion_to_base: number; // e.g. 16 for bungkus when base is batang
-  cost_price: number; // Harga Modal
-  selling_price: number; // Harga Jual
+  unit_name: string;
+  conversion_to_base: number;
+  cost_price: number;
+  selling_price: number;
   is_default?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -22,10 +22,10 @@ export interface Product {
   category_name?: string;
   name: string;
   image_url?: string;
-  base_unit: string; // e.g. Batang, Botol, Butir, Pcs
+  base_unit: string;
   minimum_stock: number;
   is_active: boolean;
-  current_stock_base: number; // Computed stock balance in base unit
+  current_stock_base: number;
   units: ProductUnit[];
   created_at?: string;
   updated_at?: string;
@@ -71,14 +71,14 @@ export type PersonalUsageType = 'BARANG' | 'UANG_CASH';
 
 export interface PersonalUsage {
   id: string;
-  type: PersonalUsageType; // 'BARANG' or 'UANG_CASH'
+  type: PersonalUsageType;
   product_id?: string;
   product_name?: string;
   product_unit_id?: string;
   unit_name?: string;
   quantity?: number;
   quantity_base?: number;
-  amount_cash?: number; // Nilai Uang Cash laci yang diambil (misal Rp15.000 untuk beli makan)
+  amount_cash?: number;
   date: string;
   note?: string;
   created_at?: string;
@@ -91,12 +91,14 @@ export interface DailyStockOpnameItem {
   product_name?: string;
   system_stock_base: number;
   physical_stock_base: number;
-  difference_base: number; // system - physical
+  difference_base: number;
   personal_use_base: number;
-  calculated_sales_base: number; // difference - personal_use
+  calculated_sales_base: number;
   selling_amount: number;
   cost_amount: number;
   profit_amount: number;
+  personal_use_cost_amount?: number;
+  net_profit_after_personal_use?: number;
 }
 
 export interface DailyStockOpname {
@@ -108,7 +110,13 @@ export interface DailyStockOpname {
   total_modal?: number;
   total_laba?: number;
   total_terjual_base?: number;
-  total_personal_cash?: number; // Total kas laci yang diambil pribadi pada hari itu
+  total_personal_cash?: number;
+  total_sold_base?: number;
+  total_sales_amount?: number;
+  total_cost_amount?: number;
+  total_profit_amount?: number;
+  total_personal_use_cost?: number;
+  total_net_profit?: number;
   created_at?: string;
 }
 
@@ -129,7 +137,9 @@ export interface DashboardStats {
   today_terjual_items: number;
   total_stock_value: number;
   today_personal_use_count: number;
-  today_personal_use_cash: number; // Total uang cash laci yang diambil hari ini
+  today_personal_use_cash: number;
+  today_personal_use_cost?: number;
+  today_net_profit?: number;
   is_rekap_completed_today: boolean;
   low_stock_products: Product[];
   top_selling_products: {
