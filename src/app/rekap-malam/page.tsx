@@ -640,12 +640,12 @@ export default function RekapMalamPage() {
       // --------------------------------------------------------
 
       const salesMovements = products
+        .filter((product) => {
+          const calc = calculations[product.id];
+          return calc && calc.calculatedSalesBase > 0;
+        })
         .map((product) => {
           const calc = calculations[product.id];
-
-          if (calc.calculatedSalesBase <= 0) {
-            return null;
-          }
 
           return {
             product_id: product.id,
@@ -657,8 +657,7 @@ export default function RekapMalamPage() {
             date,
             note: `Hasil Rekap Malam - Terjual ${calc.calculatedSalesBase} ${product.base_unit}`,
           };
-        })
-        .filter(Boolean);
+        });
 
       if (salesMovements.length > 0) {
         const { error: movementError } = await supabase
