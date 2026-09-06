@@ -117,6 +117,23 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS cash_settings (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  opening_balance DECIMAL(14, 2) NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cash_transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  date DATE NOT NULL DEFAULT CURRENT_DATE,
+  transaction_type VARCHAR(30) NOT NULL,
+  amount DECIMAL(14, 2) NOT NULL,
+  reference_id UUID,
+  note TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT cash_transactions_amount_nonzero CHECK (amount <> 0)
+);
+
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_product_units_product ON product_units(product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
@@ -124,6 +141,8 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_date ON stock_movements(date);
 CREATE INDEX IF NOT EXISTS idx_daily_stock_opnames_date ON daily_stock_opnames(date);
 CREATE INDEX IF NOT EXISTS idx_personal_usages_date ON personal_usages(date);
 CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(date);
+CREATE INDEX IF NOT EXISTS idx_cash_transactions_date ON cash_transactions(date);
+CREATE INDEX IF NOT EXISTS idx_cash_transactions_reference ON cash_transactions(reference_id);
 
 -- Safe migration for an existing database.
 ALTER TABLE public.daily_stock_opnames ADD COLUMN IF NOT EXISTS total_sold_base INT NOT NULL DEFAULT 0;
@@ -132,13 +151,10 @@ ALTER TABLE public.daily_stock_opnames ADD COLUMN IF NOT EXISTS total_cost_amoun
 ALTER TABLE public.daily_stock_opnames ADD COLUMN IF NOT EXISTS total_profit_amount DECIMAL(14,2) NOT NULL DEFAULT 0;
 ALTER TABLE public.daily_stock_opnames ADD COLUMN IF NOT EXISTS total_personal_use_cost DECIMAL(14,2) NOT NULL DEFAULT 0;
 ALTER TABLE public.daily_stock_opnames ADD COLUMN IF NOT EXISTS total_net_profit DECIMAL(14,2) NOT NULL DEFAULT 0;
-
 ALTER TABLE public.daily_stock_opname_items ADD COLUMN IF NOT EXISTS personal_use_cost_amount DECIMAL(14,2) NOT NULL DEFAULT 0;
 ALTER TABLE public.daily_stock_opname_items ADD COLUMN IF NOT EXISTS net_profit_after_personal_use DECIMAL(14,2) NOT NULL DEFAULT 0;
 
 -- RLS for the current single-user/no-login application.
--- These policies are intentionally permissive because the app currently has
--- no authentication. Tighten them before exposing the database publicly.
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.product_units ENABLE ROW LEVEL SECURITY;
@@ -149,15 +165,16 @@ ALTER TABLE public.daily_stock_opnames ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.daily_stock_opname_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_adjustments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cash_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cash_transactions ENABLE ROW LEVEL SECURITY;
 
 DO $$
-DECLARE
-  t TEXT;
+DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'categories','products','product_units','purchases','purchase_items',
-    'personal_usages','daily_stock_opnames','daily_stock_opname_items',
-    'stock_adjustments','stock_movements'
+    'categories','products','product_units','purchases','purchase_items','personal_usages',
+    'daily_stock_opnames','daily_stock_opname_items','stock_adjustments','stock_movements',
+    'cash_settings','cash_transactions'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "public_select_%s_warung" ON public.%I', t, t);
     EXECUTE format('DROP POLICY IF EXISTS "public_insert_%s_warung" ON public.%I', t, t);
