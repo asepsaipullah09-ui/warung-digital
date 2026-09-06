@@ -1,432 +1,166 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import {
-  TrendingUp,
-  DollarSign,
-  ShoppingBag,
-  Boxes,
-  UserCheck,
-  AlertTriangle,
-  ArrowUpRight,
-  Moon,
-  CheckCircle2,
-  ChevronRight,
-  Award,
-  Plus,
-  Clock,
-  PieChart as PieIcon,
-  Play,
-  Pause,
-  RotateCcw,
-  Wallet,
-} from 'lucide-react';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { formatRupiah, formatMultiUnitStock } from '@/lib/utils';
-import { warungStore } from '@/lib/store/warungStore';
-import { DashboardStats } from '@/types';
+import { AlertTriangle, ArrowUpRight, Boxes, Moon, Package, Plus, TrendingUp, Wallet } from 'lucide-react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { formatRupiah, formatMultiUnitStock, formatDateIndo, getTodayDateString } from '@/lib/utils';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
+
+type Product = { id: string; name: string; base_unit: string; minimum_stock: number; is_active: boolean };
+type Unit = { product_id: string; conversion_to_base: number; cost_price: number; selling_price: number; is_default: boolean };
+type Movement = { product_id: string; quantity_base: number; movement_type: string; date: string };
+type Usage = { type: string; product_id: string | null; quantity_base: number | null; amount_cash: number | null; date: string };
+type Opname = { id: string; date: string };
+type Item = { stock_opname_id: string; product_id: string; calculated_sales_base: number; selling_amount: number; cost_amount: number; profit_amount: number; personal_use_cost_amount: number | null };
+
+type ChartPoint = { date: string; omzet: number; laba: number };
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [movements, setMovements] = useState<Movement[]>([]);
+  const [usages, setUsages] = useState<Usage[]>([]);
+  const [opnames, setOpnames] = useState<Opname[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const loadData = () => {
-    warungStore.initializeDefaultDataIfEmpty();
-    setStats(warungStore.getDashboardStats());
-  };
+  const today = getTodayDateString();
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 2000);
-    return () => clearInterval(interval);
-  }, []);
+    let cancelled = false;
+    const load = async () => {
+      if (!supabase || !isSupabaseConfigured) {
+        setError('Supabase belum terkonfigurasi. Periksa NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+        setLoading(false);
+        return;
+      }
+      try {
+        setError('');
+        const [productsRes, unitsRes, movementsRes, usagesRes, opnamesRes, itemsRes] = await Promise.all([
+          supabase.from('products').select('id,name,base_unit,minimum_stock,is_active').eq('is_active', true).order('name'),
+          supabase.from('product_units').select('product_id,conversion_to_base,cost_price,selling_price,is_default'),
+          supabase.from('stock_movements').select('product_id,quantity_base,movement_type,date'),
+          supabase.from('personal_usages').select('type,product_id,quantity_base,amount_cash,date'),
+          supabase.from('daily_stock_opnames').select('id,date').order('date', { ascending: false }),
+          supabase.from('daily_stock_opname_items').select('stock_opname_id,product_id,calculated_sales_base,selling_amount,cost_amount,profit_amount,personal_use_cost_amount'),
+        ]);
+        const firstError = productsRes.error || unitsRes.error || movementsRes.error || usagesRes.error || opnamesRes.error || itemsRes.error;
+        if (firstError) throw new Error(firstError.message);
+        if (cancelled) return;
+        setProducts((productsRes.data || []) as Product[]);
+        setUnits((unitsRes.data || []) as Unit[]);
+        setMovements((movementsRes.data || []) as Movement[]);
+        setUsages((usagesRes.data || []) as Usage[]);
+        setOpnames((opnamesRes.data || []) as Opname[]);
+        setItems((itemsRes.data || []) as Item[]);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Gagal mengambil data dari Supabase.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    const interval = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [today]);
 
-  // Quick stopwatch timer for counting stock during opname
-  useEffect(() => {
-    let interval: any = null;
-    if (isTimerRunning) {
-      interval = setInterval(() => setTimerSeconds((prev) => prev + 1), 1000);
-    } else {
-      clearInterval(interval);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning]);
-
-  const formatTimer = (totalSeconds: number) => {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const basePrice = (productId: string, field: 'cost_price' | 'selling_price') => {
+    const list = units.filter((u) => u.product_id === productId);
+    const base = list.find((u) => Number(u.conversion_to_base) === 1);
+    if (base) return Number(base[field] || 0);
+    const unit = list.find((u) => u.is_default) || list[0];
+    if (!unit) return 0;
+    return Number(unit[field] || 0) / Math.max(1, Number(unit.conversion_to_base || 1));
   };
 
-  if (!stats) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#073b2a]"></div>
-      </div>
-    );
-  }
+  const stock = useMemo(() => {
+    const result: Record<string, number> = {};
+    products.forEach((p) => { result[p.id] = 0; });
+    movements.forEach((m) => {
+      if (result[m.product_id] !== undefined) result[m.product_id] += Number(m.quantity_base || 0);
+    });
+    return result;
+  }, [products, movements]);
 
-  // Calculate Stock Safety Donut chart data
-  const safeStockCount = Math.max(0, 10 - stats.low_stock_products.length);
-  const lowStockCount = stats.low_stock_products.length;
-  const pieData = [
-    { name: 'Stok Aman', value: safeStockCount, color: '#073b2a' },
-    { name: 'Stok Menipis', value: lowStockCount, color: '#f59e0b' },
-  ];
+  const todayOpname = opnames.find((o) => o.date === today);
+  const todayItems = useMemo(() => items.filter((i) => i.stock_opname_id === todayOpname?.id), [items, todayOpname]);
+
+  const stats = useMemo(() => {
+    const omzet = todayItems.reduce((s, i) => s + Number(i.selling_amount || 0), 0);
+    const modal = todayItems.reduce((s, i) => s + Number(i.cost_amount || 0), 0);
+    const laba = todayItems.reduce((s, i) => s + Number(i.profit_amount || 0), 0);
+    const personalBarang = usages.filter((u) => u.date === today && u.type === 'BARANG');
+    const personalCost = personalBarang.reduce((s, u) => s + Number(u.quantity_base || 0) * basePrice(u.product_id || '', 'cost_price'), 0);
+    const cash = usages.filter((u) => u.date === today && u.type === 'UANG_CASH').reduce((s, u) => s + Number(u.amount_cash || 0), 0);
+    const sold = todayItems.reduce((s, i) => s + Number(i.calculated_sales_base || 0), 0);
+    return { omzet, modal, laba, personalCost, net: laba - personalCost, cash, sold, personalCount: personalBarang.reduce((s, u) => s + Number(u.quantity_base || 0), 0) };
+  }, [todayItems, usages, units, today]);
+
+  const stockValue = useMemo(() => products.reduce((sum, p) => sum + Math.max(0, stock[p.id] || 0) * basePrice(p.id, 'cost_price'), 0), [products, stock, units]);
+  const lowStock = useMemo(() => products.filter((p) => (stock[p.id] || 0) <= Number(p.minimum_stock || 0)).sort((a, b) => (stock[a.id] || 0) - (stock[b.id] || 0)), [products, stock]);
+
+  const topProducts = useMemo(() => todayItems.map((i) => ({ ...i, product: products.find((p) => p.id === i.product_id) })).filter((x) => x.product).sort((a, b) => Number(b.calculated_sales_base) - Number(a.calculated_sales_base)).slice(0, 5), [todayItems, products]);
+
+  const chart = useMemo<ChartPoint[]>(() => {
+    const byId = Object.fromEntries(opnames.map((o) => [o.id, o.date]));
+    const byDate: Record<string, { omzet: number; laba: number }> = {};
+    items.forEach((i) => {
+      const date = byId[i.stock_opname_id];
+      if (!date) return;
+      if (!byDate[date]) byDate[date] = { omzet: 0, laba: 0 };
+      byDate[date].omzet += Number(i.selling_amount || 0);
+      byDate[date].laba += Number(i.profit_amount || 0);
+    });
+    const now = new Date(`${today}T12:00:00`);
+    return Array.from({ length: 7 }, (_, index) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (6 - index));
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { date: key.slice(5).replace('-', '/'), omzet: Math.round(byDate[key]?.omzet || 0), laba: Math.round(byDate[key]?.laba || 0) };
+    });
+  }, [items, opnames, today]);
+
+  if (loading) return <div className="min-h-[60vh] flex items-center justify-center"><div className="text-center"><div className="w-9 h-9 border-4 border-emerald-200 border-t-[#073b2a] rounded-full animate-spin mx-auto" /><p className="text-sm text-gray-500 mt-3">Memuat Dashboard dari Supabase...</p></div></div>;
+  if (error) return <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700"><b>Dashboard gagal dimuat</b><p className="text-sm mt-1">{error}</p></div>;
 
   return (
-    <div className="space-y-6">
-      {/* Top Title & Page Actions */}
+    <div className="space-y-6 pb-10">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Dashboard</h1>
-          <p className="text-xs md:text-sm text-gray-500 font-medium mt-1">
-            Pantau stok, rekap malam, omzet, dan laba harian warung Anda dengan mudah.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link
-            href="/rekap-malam"
-            className="px-4 py-2.5 bg-[#073b2a] hover:bg-[#0d684a] text-white font-bold rounded-xl text-xs shadow-sm transition-all flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4 text-emerald-400" />
-            + Mulai Rekap Malam
-          </Link>
-          <Link
-            href="/barang-masuk"
-            className="px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold rounded-xl text-xs transition-all shadow-2xs"
-          >
-            + Barang Masuk
-          </Link>
-        </div>
+        <div><h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Dashboard</h1><p className="text-xs md:text-sm text-gray-500 mt-1">{formatDateIndo(today)} • Data langsung dari Supabase</p></div>
+        <div className="flex gap-2"><Link href="/rekap-malam" className="px-4 py-2.5 bg-[#073b2a] text-white rounded-xl text-xs font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> Mulai Rekap</Link><Link href="/barang-masuk" className="px-4 py-2.5 bg-white border rounded-xl text-gray-700 text-xs font-bold">+ Barang Masuk</Link></div>
       </div>
 
-      {/* Warning Banner if Rekap Malam Pending */}
-      {!stats.is_rekap_completed_today && (
-        <div className="bg-[#073b2a] text-white rounded-2xl p-4 md:p-5 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border border-emerald-900/30">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-              <Moon className="w-5 h-5 fill-emerald-400" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm md:text-base">Rekap Malam Belum Selesai Hari Ini</h3>
-              <p className="text-emerald-100/80 text-xs">
-                Masukkan sisa fisik barang di warung malam ini untuk menghitung Omzet & Laba otomatis.
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/rekap-malam"
-            className="px-4 py-2 bg-emerald-400 hover:bg-emerald-300 text-[#073b2a] font-extrabold rounded-xl text-xs shadow-sm shrink-0 transition-colors"
-          >
-            Mulai Rekap Now →
-          </Link>
-        </div>
-      )}
+      {!todayOpname && <div className="bg-[#073b2a] text-white rounded-2xl p-4 flex items-center justify-between gap-4"><div className="flex items-center gap-3"><Moon className="w-5 h-5 text-emerald-300" /><div><b className="text-sm">Rekap malam belum selesai</b><p className="text-xs text-emerald-100/80">Masukkan stok fisik malam ini agar penjualan, omzet, dan laba hari ini difinalkan.</p></div></div><Link href="/rekap-malam" className="bg-emerald-300 text-[#073b2a] px-3 py-2 rounded-lg text-xs font-extrabold">Rekap →</Link></div>}
 
-      {/* Top Metric Cards Grid - Fully Responsive & Overflow Protected */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-        {/* Card 1: Featured Primary Dark Green Card */}
-        <div className="bg-gradient-to-br from-[#073b2a] to-[#0d684a] text-white rounded-2xl p-4 md:p-5 shadow-md flex flex-col justify-between relative overflow-hidden group min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider truncate">Omzet Hari Ini</span>
-            <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
-              <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </div>
-          </div>
-          <div className="my-2.5 min-w-0">
-            <div className="text-lg xl:text-2xl font-extrabold tracking-tight truncate" title={formatRupiah(stats.today_omzet)}>
-              {formatRupiah(stats.today_omzet)}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-emerald-200/90 font-medium min-w-0">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-            <span className="truncate">{stats.is_rekap_completed_today ? 'Hasil Rekap Final' : 'Belum Rekap Malam'}</span>
-          </div>
-        </div>
-
-        {/* Card 2: Laba Bersih */}
-        <div className="bg-white rounded-2xl p-4 md:p-5 border border-gray-200/70 shadow-2xs flex flex-col justify-between group min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate">Laba Bersih</span>
-            <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center shrink-0">
-              <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </div>
-          </div>
-          <div className="my-2.5 min-w-0">
-            <div className="text-lg xl:text-2xl font-extrabold text-gray-900 tracking-tight truncate" title={formatRupiah(stats.today_laba)}>
-              {formatRupiah(stats.today_laba)}
-            </div>
-          </div>
-          <div className="text-[11px] text-gray-400 font-medium truncate">
-            Omzet - Modal Terjual
-          </div>
-        </div>
-
-        {/* Card 3: Total Terjual */}
-        <div className="bg-white rounded-2xl p-4 md:p-5 border border-gray-200/70 shadow-2xs flex flex-col justify-between group min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate">Barang Terjual</span>
-            <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center shrink-0">
-              <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </div>
-          </div>
-          <div className="my-2.5 min-w-0">
-            <div className="text-lg xl:text-2xl font-extrabold text-gray-900 tracking-tight truncate">
-              {stats.today_terjual_items} <span className="text-xs font-normal text-gray-500">item</span>
-            </div>
-          </div>
-          <div className="text-[11px] text-gray-400 font-medium truncate">
-            Stok Keluar Bersih
-          </div>
-        </div>
-
-        {/* Card 4: Nilai Stok */}
-        <div className="bg-white rounded-2xl p-4 md:p-5 border border-gray-200/70 shadow-2xs flex flex-col justify-between group min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider truncate">Nilai Stok</span>
-            <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center shrink-0">
-              <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </div>
-          </div>
-          <div className="my-2.5 min-w-0">
-            <div className="text-lg xl:text-2xl font-extrabold text-gray-900 tracking-tight truncate" title={formatRupiah(stats.total_stock_value)}>
-              {formatRupiah(stats.total_stock_value)}
-            </div>
-          </div>
-          <div className="text-[11px] text-gray-400 font-medium truncate">
-            Total Modal di Rak
-          </div>
-        </div>
-
-        {/* Card 5: Pemakaian Pribadi & Uang Laci */}
-        <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl p-4 md:p-5 border border-purple-100 shadow-2xs flex flex-col justify-between group min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-semibold text-purple-700 uppercase tracking-wider truncate">Kas / Barang</span>
-            <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
-              <Wallet className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="my-2 min-w-0">
-            <div className="text-base xl:text-lg font-extrabold text-purple-950 truncate">
-              {stats.today_personal_use_count} <span className="text-xs font-normal text-gray-500">item</span>
-            </div>
-            {stats.today_personal_use_cash > 0 && (
-              <div className="text-xs font-bold text-emerald-800 mt-0.5 truncate">
-                + {formatRupiah(stats.today_personal_use_cash)} Cash
-              </div>
-            )}
-          </div>
-          <div className="text-[11px] text-gray-400 font-medium truncate">
-            Pemakaian Sendiri
-          </div>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <Kpi title="Omzet Hari Ini" value={formatRupiah(stats.omzet)} dark icon={<ArrowUpRight />} />
+        <Kpi title="Laba Penjualan" value={formatRupiah(stats.laba)} icon={<TrendingUp />} />
+        <Kpi title="Beban Pemakaian" value={formatRupiah(stats.personalCost)} icon={<Package />} />
+        <Kpi title="Laba Setelah Pemakaian" value={formatRupiah(stats.net)} icon={<TrendingUp />} />
+        <Kpi title="Kas Pribadi Diambil" value={formatRupiah(stats.cash)} icon={<Wallet />} />
+        <Kpi title="Barang Terjual" value={`${stats.sold} unit`} icon={<Package />} />
+        <Kpi title="Nilai Stok" value={formatRupiah(stockValue)} icon={<Boxes />} />
+        <Kpi title="Stok Menipis" value={`${lowStock.length} produk`} icon={<AlertTriangle />} />
       </div>
 
-      {/* Middle Section: Chart + Reminders + Donut Progress */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Omzet 7-Day Chart (7 Cols) */}
-        <Card className="lg:col-span-7">
-          <CardHeader>
-            <CardTitle>
-              <TrendingUp className="w-4 h-4 text-[#073b2a]" />
-              Grafik Trend Omzet & Laba (7 Hari)
-            </CardTitle>
-          </CardHeader>
-          <div className="h-60 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.chart_7_days} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorOmzetRef" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#073b2a" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#073b2a" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorLabaRef" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date_formatted" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(val) => `Rp${val / 1000}k`} />
-                <Tooltip
-                  formatter={(value: any) => [formatRupiah(Number(value) || 0), '']}
-                  labelFormatter={(label) => `Tanggal: ${label}`}
-                />
-                <Area type="monotone" dataKey="omzet" name="Omzet" stroke="#073b2a" fillOpacity={1} fill="url(#colorOmzetRef)" strokeWidth={2.5} />
-                <Area type="monotone" dataKey="laba" name="Laba Bersih" stroke="#10b981" fillOpacity={1} fill="url(#colorLabaRef)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="mb-4"><h2 className="font-extrabold text-lg">Trend Omzet & Laba 7 Hari</h2><p className="text-xs text-gray-500">Diambil dari rekap malam yang tersimpan di Supabase.</p></div><div className="h-64"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} /><Tooltip formatter={(v: any) => formatRupiah(Number(v))} /><Area type="monotone" dataKey="omzet" name="Omzet" stroke="#073b2a" fill="#073b2a" fillOpacity={0.12} strokeWidth={2.5} /><Area type="monotone" dataKey="laba" name="Laba" stroke="#10b981" fill="#10b981" fillOpacity={0.12} strokeWidth={2} /></AreaChart></ResponsiveContainer></div></div>
 
-        {/* Right: Reminders & Stock Gauge Progress */}
-        <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="flex flex-col justify-between">
-            <div>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Reminders</span>
-              <h4 className="font-extrabold text-sm text-gray-900 leading-snug">
-                Hitung Fisik Stok Malam Ini
-              </h4>
-              <p className="text-xs text-gray-500 mt-1">
-                Waktu terbaik rekap: 20:00 - 22:00 saat warung mau tutup.
-              </p>
-            </div>
-            <Link
-              href="/rekap-malam"
-              className="mt-4 w-full py-2 bg-[#073b2a] hover:bg-[#0d684a] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-            >
-              <Moon className="w-3.5 h-3.5 text-emerald-400" />
-              Mulai Rekap
-            </Link>
-          </Card>
-
-          <Card className="flex flex-col items-center justify-center text-center">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Kesehatan Stok</span>
-            <div className="h-28 w-28 relative my-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={30}
-                    outerRadius={45}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex items-center justify-center font-extrabold text-sm text-gray-900">
-                {stats.low_stock_products.length === 0 ? '100%' : `${Math.round((safeStockCount / 10) * 100)}%`}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-[10px] font-semibold text-gray-500">
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-[#073b2a]"></span> Aman
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span> Menipis ({lowStockCount})
-              </span>
-            </div>
-          </Card>
-        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><h2 className="font-extrabold text-lg">Produk Terlaris Hari Ini</h2><p className="text-xs text-gray-500 mt-1">Berdasarkan base unit yang terjual.</p><div className="mt-4 space-y-3">{topProducts.length ? topProducts.map((item, index) => <div key={item.product_id} className="flex items-center justify-between gap-3"><div className="flex items-center gap-3 min-w-0"><span className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center justify-center">{index + 1}</span><span className="text-sm font-semibold truncate">{item.product?.name}</span></div><span className="text-sm font-extrabold">{item.calculated_sales_base}</span></div>) : <p className="text-sm text-gray-400 py-8 text-center">Belum ada penjualan yang difinalkan hari ini.</p>}</div></div>
       </div>
 
-      {/* Bottom Section: Top Products & Quick Stopwatch Timer */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <Card className="lg:col-span-8">
-          <CardHeader>
-            <CardTitle>
-              <Award className="w-4 h-4 text-amber-500" />
-              Produk Paling Banyak Terjual
-            </CardTitle>
-            <Link href="/laporan" className="text-xs text-emerald-700 font-bold hover:underline">
-              Lihat Laporan Lengkap →
-            </Link>
-          </CardHeader>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center justify-between"><div><h2 className="font-extrabold text-lg">Stok Menipis</h2><p className="text-xs text-gray-500 mt-1">Produk di bawah atau sama dengan batas minimum.</p></div><Link href="/barang" className="text-xs font-bold text-emerald-700">Kelola →</Link></div><div className="mt-4 space-y-3">{lowStock.slice(0, 8).map((p) => <div key={p.id} className="flex items-center justify-between gap-3 border-b border-gray-100 pb-3"><div><p className="text-sm font-bold">{p.name}</p><p className="text-[11px] text-gray-400">Minimum {p.minimum_stock} {p.base_unit}</p></div><span className="text-sm font-extrabold text-red-600">{formatMultiUnitStock(Math.max(0, stock[p.id] || 0), p.base_unit, units.filter((u) => u.product_id === p.id) as any)}</span></div>)}{lowStock.length === 0 && <p className="text-sm text-gray-400">Semua stok aman.</p>}</div></div>
 
-          <div className="space-y-2.5">
-            {stats.top_selling_products.length === 0 ? (
-              <p className="text-xs text-gray-400 py-6 text-center">Belum ada data rekap malam.</p>
-            ) : (
-              stats.top_selling_products.map((item, idx) => (
-                <div
-                  key={item.product_id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-gray-50/80 hover:bg-gray-100/80 transition-colors min-w-0"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-[#073b2a] text-emerald-400 font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs">
-                      #{idx + 1}
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-xs md:text-sm text-gray-900 truncate">{item.product_name}</h4>
-                      <p className="text-[11px] text-gray-500 truncate">
-                        {item.total_sales_base} {item.base_unit} terjual
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="font-bold text-xs md:text-sm text-emerald-800">
-                      {formatRupiah(item.total_omzet)}
-                    </span>
-                    <span className="text-[10px] text-gray-400 block">Omzet Produk</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-
-        {/* Stopwatch Timer */}
-        <div className="lg:col-span-4">
-          <div className="bg-[#051f16] text-white p-5 rounded-2xl shadow-lg border border-emerald-950 flex flex-col justify-between h-full">
-            <div>
-              <div className="flex items-center justify-between text-xs text-emerald-300 font-semibold mb-2">
-                <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-emerald-400" />
-                  Timer Rekap Malam
-                </span>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Hitung Stok
-                </span>
-              </div>
-              <p className="text-xs text-emerald-200/70 mb-4">
-                Nyalakan timer saat Anda mulai menghitung fisik sisa barang di warung.
-              </p>
-            </div>
-
-            <div className="my-2 text-center">
-              <div className="text-3xl md:text-4xl font-extrabold font-mono tracking-widest text-emerald-300">
-                {formatTimer(timerSeconds)}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center gap-3 pt-4 border-t border-emerald-900/50">
-              <button
-                onClick={() => setIsTimerRunning(!isTimerRunning)}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform active:scale-95 ${
-                  isTimerRunning ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-[#073b2a]'
-                }`}
-              >
-                {isTimerRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
-              </button>
-              <button
-                onClick={() => {
-                  setIsTimerRunning(false);
-                  setTimerSeconds(0);
-                }}
-                className="w-10 h-10 rounded-full bg-emerald-900/60 hover:bg-emerald-900 text-emerald-300 flex items-center justify-center transition-colors"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><h2 className="font-extrabold text-lg">Ringkasan Pemakaian Pribadi</h2><div className="grid grid-cols-2 gap-3 mt-4"><div className="rounded-xl bg-purple-50 p-4"><p className="text-xs text-purple-700 font-bold">Barang Dipakai</p><p className="text-xl font-extrabold text-purple-950 mt-1">{stats.personalCount} unit</p><p className="text-[11px] text-purple-700/70 mt-1">Menjadi beban modal</p></div><div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs text-emerald-700 font-bold">Kas Diambil</p><p className="text-xl font-extrabold text-emerald-950 mt-1">{formatRupiah(stats.cash)}</p><p className="text-[11px] text-emerald-700/70 mt-1">Tidak dihitung omzet</p></div></div><div className="mt-4 rounded-xl border bg-gray-50 p-4 text-sm"><div className="flex justify-between"><span className="text-gray-500">Laba penjualan</span><b>{formatRupiah(stats.laba)}</b></div><div className="flex justify-between mt-2"><span className="text-gray-500">Beban pemakaian</span><b className="text-red-600">− {formatRupiah(stats.personalCost)}</b></div><div className="flex justify-between mt-3 pt-3 border-t"><span className="font-bold">Laba setelah pemakaian</span><b className="text-[#073b2a]">{formatRupiah(stats.net)}</b></div></div></div>
       </div>
     </div>
   );
+}
+
+function Kpi({ title, value, icon, dark = false }: { title: string; value: string; icon: React.ReactNode; dark?: boolean }) {
+  return <div className={`${dark ? 'bg-[#073b2a] text-white border-[#073b2a]' : 'bg-white text-gray-900 border-gray-200'} rounded-2xl p-4 md:p-5 border shadow-sm min-w-0`}><div className="flex items-center justify-between gap-2"><span className={`text-[11px] font-bold uppercase tracking-wider truncate ${dark ? 'text-emerald-200' : 'text-gray-500'}`}>{title}</span><span className={dark ? 'text-emerald-300' : 'text-emerald-700'}>{React.cloneElement(icon as React.ReactElement, { className: 'w-4 h-4' })}</span></div><p className="text-lg xl:text-2xl font-extrabold mt-3 truncate" title={value}>{value}</p></div>;
 }
