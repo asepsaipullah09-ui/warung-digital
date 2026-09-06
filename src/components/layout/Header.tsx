@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Search,
   Bell,
   CheckCircle2,
   AlertCircle,
@@ -81,7 +80,7 @@ export function Header() {
 
   return (
     <>
-      <header className="bg-white border-b border-gray-200/70 sticky top-0 z-30 px-4 md:px-8 py-3 flex items-center justify-between gap-4 shadow-2xs">
+      <header className="bg-white border-b border-gray-200/70 sticky top-0 z-30 px-3 sm:px-4 md:px-8 py-3 flex items-center justify-between gap-2 sm:gap-4 shadow-2xs">
         <div className="flex-1 max-w-md hidden sm:block">
           <button
             onClick={() => setIsSearchOpen(true)}
@@ -109,7 +108,7 @@ export function Header() {
           {isCompleted ? (
             <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-full border border-emerald-200">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Rekap Selesai</span>
+              <span className="hidden sm:inline">Rekap Selesai</span>
             </div>
           ) : (
             <Link
@@ -117,11 +116,11 @@ export function Header() {
               className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-full border border-amber-300 transition-colors animate-pulse"
             >
               <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-              <span>⚠️ Belum Rekap</span>
+              <span className="hidden sm:inline">Belum Rekap</span>
             </Link>
           )}
 
-          <button className="p-2 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-500 transition-colors relative">
+          <button aria-label="Notifikasi" className="p-2 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-500 transition-colors relative">
             <Bell className="w-4 h-4" />
             {!isCompleted && (
               <span className="w-2 h-2 rounded-full bg-amber-500 absolute top-1.5 right-1.5"></span>

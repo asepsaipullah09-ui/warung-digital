@@ -330,7 +330,7 @@ export default function LaporanPage() {
             ))}
           </div>
           {filterType === 'CUSTOM' && (
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
               <Calendar className="w-4 h-4 text-gray-400" />
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg" />
               <span>s/d</span>
@@ -404,7 +404,7 @@ export default function LaporanPage() {
             <CardHeader><CardTitle><BarChart3 className="w-5 h-5 text-gray-600" /> Ringkasan Harian</CardTitle></CardHeader>
             <div className="overflow-x-auto">
               <table className="w-full text-sm"><thead><tr className="border-b border-gray-100 text-left text-xs text-gray-500"><th className="p-3">Tanggal</th><th className="p-3 text-right">Terjual</th><th className="p-3 text-right">Omzet</th><th className="p-3 text-right">Modal</th><th className="p-3 text-right">Laba</th><th className="p-3 text-right">Beban Pribadi</th><th className="p-3 text-right">Laba Setelah Pakai</th></tr></thead><tbody>
-                {filteredOpnames.length === 0 ? <tr><td colSpan={7} className="p-6 text-center text-gray-400">Belum ada rekap malam pada periode ini.</td></tr> : filteredOpnames.sort((a, b) => b.date.localeCompare(a.date)).map((row) => {
+                {filteredOpnames.length === 0 ? <tr><td colSpan={7} className="p-6 text-center text-gray-400">Belum ada rekap malam pada periode ini.</td></tr> : [...filteredOpnames].sort((a, b) => b.date.localeCompare(a.date)).map((row) => {
                   const rowItems = items.filter((item) => item.stock_opname_id === row.id);
                   const hasValues = rowItems.some((item) => Number(item.selling_amount || 0) !== 0 || Number(item.calculated_sales_base || 0) !== 0);
                   const omzet = hasValues ? rowItems.reduce((s, i) => s + Number(i.selling_amount || 0), 0) : Number(row.total_sales_amount || 0);

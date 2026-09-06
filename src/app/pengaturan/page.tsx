@@ -74,8 +74,8 @@ export default function PengaturanPage() {
             {copied ? '✅ Tersalin!' : 'Copy Referensi'}
           </button>
         </CardHeader>
-        <div className="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[11px]">
-          <pre>{sqlSchema}</pre>
+        <div className="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
+          <pre className="min-w-max">{sqlSchema}</pre>
         </div>
         <p className="text-[11px] text-gray-400 mt-2">
           Gunakan file <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">supabase/schema.sql</code> sebagai sumber schema lengkap dan terbaru.

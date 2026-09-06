@@ -38,23 +38,33 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: Mod
   }[maxWidth];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div
         className={cn(
-          'bg-white rounded-2xl shadow-xl w-full max-h-[90vh] flex flex-col border border-gray-100 overflow-hidden',
+          'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-h-[92vh] sm:max-h-[90vh] flex flex-col border border-gray-100 overflow-hidden',
           maxWidthClass
         )}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-          <h3 className="font-bold text-gray-900 text-lg">{title}</h3>
+        <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          <h3 id="modal-title" className="font-bold text-gray-900 text-lg truncate">{title}</h3>
           <button
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Tutup dialog"
+            className="shrink-0 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6 overflow-y-auto flex-1">{children}</div>
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

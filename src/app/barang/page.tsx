@@ -1229,11 +1229,11 @@ export default function BarangPage() {
       ===================================================== */}
 
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] overflow-hidden">
             {/* HEADER */}
 
-            <div className="flex items-center justify-between px-6 py-4 border-b">
+            <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-4 border-b">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">
                   {editingProduct
@@ -1248,7 +1248,8 @@ export default function BarangPage() {
 
               <button
                 onClick={closeProductModal}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                aria-label="Tutup modal produk"
+                className="shrink-0 p-2 hover:bg-gray-100 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1258,9 +1259,9 @@ export default function BarangPage() {
 
             <form
               onSubmit={handleSubmitProduct}
-              className="overflow-y-auto max-h-[calc(90vh-140px)]"
+              className="overflow-y-auto max-h-[calc(92vh-140px)] sm:max-h-[calc(90vh-140px)]"
             >
-              <div className="p-6 space-y-5">
+              <div className="p-4 sm:p-6 space-y-5">
                 {/* BASIC DATA */}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1641,9 +1642,9 @@ export default function BarangPage() {
       ===================================================== */}
 
       {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-md max-h-[92vh] overflow-y-auto sm:overflow-hidden">
+            <div className="flex items-center justify-between gap-4 px-4 sm:px-5 py-4 border-b">
               <div>
                 <h2 className="font-bold text-gray-900">
                   {editingCategory
@@ -1662,14 +1663,15 @@ export default function BarangPage() {
                   !saving &&
                   setIsCategoryModalOpen(false)
                 }
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                aria-label="Tutup modal kategori"
+                className="shrink-0 p-2 hover:bg-gray-100 rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSubmitCategory}>
-              <div className="p-5">
+              <div className="p-4 sm:p-5">
                 <label className="block text-xs font-bold text-gray-700 mb-1">
                   Nama Kategori *
                 </label>
