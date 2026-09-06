@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -10,6 +10,24 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'WarungKu - Manajemen Stok & Laba Warung',
   description: 'Aplikasi Manajemen Stok Warung Digital, Barang Masuk, Rekap Malam & Perhitungan Laba Otomatis',
+  applicationName: 'WarungKu',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'WarungKu',
+    statusBarStyle: 'default',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0f172a',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
