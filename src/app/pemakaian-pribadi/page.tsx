@@ -221,7 +221,11 @@ export default function PemakaianPribadiPage() {
   };
 
   useEffect(() => {
-    loadData();
+    const loadTimer = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -453,9 +457,9 @@ export default function PemakaianPribadiPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-            <UserCheck className="w-7 h-7 text-[#073b2a]" />
-            Pencatatan Pemakaian & Kas Pribadi
+          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight flex items-start gap-2">
+            <UserCheck className="w-7 h-7 mt-0.5 shrink-0 text-[#073b2a]" />
+            <span className="break-words">Pencatatan Pemakaian & Kas Pribadi</span>
           </h1>
           <p className="text-xs md:text-sm text-gray-500 font-medium mt-1">
             Catat barang yang diambil atau uang cash dari laci warung.
@@ -536,22 +540,22 @@ export default function PemakaianPribadiPage() {
           </CardHeader>
 
           <div className="p-4 pt-0">
-            <div className="grid grid-cols-2 gap-2 mb-4 p-1 bg-gray-100 rounded-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mb-4 p-1 bg-gray-100 rounded-xl">
               <button
                 type="button"
                 onClick={() => handleUsageTypeChange('BARANG')}
-                className={`py-2 px-3 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${usageType === 'BARANG' ? 'bg-[#073b2a] text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`min-w-0 py-2 px-2 sm:px-3 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${usageType === 'BARANG' ? 'bg-[#073b2a] text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 <Package className="w-3.5 h-3.5" />
-                📦 Ambil Barang Warung
+                <span className="truncate">Ambil Barang Warung</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleUsageTypeChange('UANG_CASH')}
-                className={`py-2 px-3 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${usageType === 'UANG_CASH' ? 'bg-[#073b2a] text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
+                className={`min-w-0 py-2 px-2 sm:px-3 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${usageType === 'UANG_CASH' ? 'bg-[#073b2a] text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}`}
               >
                 <Wallet className="w-3.5 h-3.5" />
-                💵 Ambil Uang Cash Laci
+                <span className="truncate">Ambil Uang Cash Laci</span>
               </button>
             </div>
 
@@ -589,7 +593,7 @@ export default function PemakaianPribadiPage() {
                     </select>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1">Satuan *</label>
                       <select
@@ -746,20 +750,20 @@ export default function PemakaianPribadiPage() {
                   return (
                     <div
                       key={usage.id}
-                      className="p-3.5 bg-gray-50/80 border border-gray-200/70 rounded-xl flex items-center justify-between gap-3 hover:bg-gray-100/80 transition-colors"
+                      className="p-3.5 bg-gray-50/80 border border-gray-200/70 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-gray-100/80 transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           {usage.type === 'UANG_CASH' ? (
                             <>
-                              <span className="font-extrabold text-sm text-emerald-900">
-                                💵 Ambil Uang Cash: {formatRupiah(usage.amount_cash || 0)}
+                              <span className="font-extrabold text-sm text-emerald-900 break-words">
+                                Ambil Uang Cash: {formatRupiah(usage.amount_cash || 0)}
                               </span>
                               <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">UANG LACI</span>
                             </>
                           ) : (
                             <>
-                              <span className="font-bold text-sm text-gray-900">📦 {usage.product_name || 'Produk'}</span>
+                              <span className="font-bold text-sm text-gray-900 break-words">{usage.product_name || 'Produk'}</span>
                               <span className="bg-purple-100 text-purple-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
                                 {usage.quantity} {usage.unit_name || 'unit'}
                               </span>
@@ -776,7 +780,7 @@ export default function PemakaianPribadiPage() {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center justify-between gap-2 w-full sm:w-auto shrink-0">
                         <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-gray-400" />
                           {formatDateIndo(usage.date)}
