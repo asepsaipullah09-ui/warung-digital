@@ -65,6 +65,8 @@ type Calculation = {
   sellingAmount: number;
   costAmount: number;
   profitAmount: number;
+  personalUseCostAmount: number;
+  netProfitAfterPersonalUse: number;
   isPhysicalHigherThanSystem: boolean;
   warningMessage?: string;
 };
@@ -571,28 +573,42 @@ export default function RekapMalamPage() {
     try {
       setSaving(true);
 
-      // --------------------------------------------------------
-      // 1. Buat header daily_stock_opnames
-      // --------------------------------------------------------
+      const totalPersonalCash = personalUsages
+        .filter((usage) => usage.type === 'UANG_CASH')
+        .reduce(
+          (total, usage) => total + Number(usage.amount_cash || 0),
+          0
+        );
+
+      const totalPersonalUseCost = products.reduce((total, product) => {
+        const calc = calculations[product.id];
+
+        return total + (calc?.personalUseCostAmount || 0);
+      }, 0);
+
+      const totalNetProfit = summary.laba - totalPersonalUseCost;
 
       const { data: opname, error: opnameError } = await supabase
         .from('daily_stock_opnames')
         .insert({
           date,
           status: 'COMPLETED',
-          total_personal_cash: personalUsages
-            .filter((u) => u.type === 'UANG_CASH')
-            .reduce(
-              (total, u) => total + Number(u.amount_cash || 0),
-              0
-            ),
+          total_personal_cash: totalPersonalCash,
+          total_sold_base: summary.terjual,
+          total_sales_amount: summary.omzet,
+          total_cost_amount: summary.modal,
+          total_profit_amount: summary.laba,
+          total_personal_use_cost: totalPersonalUseCost,
+          total_net_profit: totalNetProfit,
         })
         .select()
         .single();
 
-      if (opnameError) {
+      if (opnameError || !opname) {
         throw new Error(
-          `Gagal menyimpan header rekap: ${opnameError.message}`
+          `Gagal menyimpan header rekap: ${
+            opnameError?.message || 'Data rekap tidak ditemukan.'
+          }`
         );
       }
 
@@ -614,6 +630,9 @@ export default function RekapMalamPage() {
           selling_amount: calc.sellingAmount,
           cost_amount: calc.costAmount,
           profit_amount: calc.profitAmount,
+          personal_use_cost_amount: calc.personalUseCostAmount,
+          net_profit_after_personal_use:
+            calc.netProfitAfterPersonalUse,
         };
       });
 
@@ -665,8 +684,18 @@ export default function RekapMalamPage() {
           .insert(salesMovements);
 
         if (movementError) {
+          await supabase
+            .from('daily_stock_opname_items')
+            .delete()
+            .eq('stock_opname_id', opname.id);
+
+          await supabase
+            .from('daily_stock_opnames')
+            .delete()
+            .eq('id', opname.id);
+
           throw new Error(
-            `Rekap tersimpan, tetapi stok penjualan gagal dicatat: ${movementError.message}`
+            `Gagal mencatat stok penjualan: ${movementError.message}`
           );
         }
       }
@@ -677,14 +706,21 @@ export default function RekapMalamPage() {
 
       alert(
         `✅ Rekap malam berhasil disimpan!\n\n` +
+          `Terjual: ${summary.terjual} unit dasar\n` +
           `Omzet: ${formatRupiah(summary.omzet)}\n` +
           `Modal: ${formatRupiah(summary.modal)}\n` +
-          `Laba: ${formatRupiah(summary.laba)}`
+          `Laba Penjualan: ${formatRupiah(summary.laba)}\n` +
+          `Beban Pemakaian: ${formatRupiah(
+            totalPersonalUseCost
+          )}\n` +
+          `Laba Setelah Pemakaian: ${formatRupiah(
+            totalNetProfit
+          )}`
       );
 
       await loadData();
     } catch (error: any) {
-      console.error(error);
+      console.error('Gagal menyimpan rekap malam:', error);
 
       alert(
         error?.message ||

@@ -161,6 +161,6 @@ export default function DashboardPage() {
   );
 }
 
-function Kpi({ title, value, icon, dark = false }: { title: string; value: string; icon: React.ReactNode; dark?: boolean }) {
-  return <div className={`${dark ? 'bg-[#073b2a] text-white border-[#073b2a]' : 'bg-white text-gray-900 border-gray-200'} rounded-2xl p-4 md:p-5 border shadow-sm min-w-0`}><div className="flex items-center justify-between gap-2"><span className={`text-[11px] font-bold uppercase tracking-wider truncate ${dark ? 'text-emerald-200' : 'text-gray-500'}`}>{title}</span><span className={dark ? 'text-emerald-300' : 'text-emerald-700'}>{React.cloneElement(icon as React.ReactElement, { className: 'w-4 h-4' })}</span></div><p className="text-lg xl:text-2xl font-extrabold mt-3 truncate" title={value}>{value}</p></div>;
+function Kpi({ title, value, icon, dark = false }: { title: string; value: string; icon: React.ReactElement<{ className?: string }>; dark?: boolean }) {
+  return <div className={`${dark ? 'bg-[#073b2a] text-white border-[#073b2a]' : 'bg-white text-gray-900 border-gray-200'} rounded-2xl p-4 md:p-5 border shadow-sm min-w-0`}><div className="flex items-center justify-between gap-2"><span className={`text-[11px] font-bold uppercase tracking-wider truncate ${dark ? 'text-emerald-200' : 'text-gray-500'}`}>{title}</span><span className={dark ? 'text-emerald-300' : 'text-emerald-700'}>{React.cloneElement(icon, { className: 'w-4 h-4' })}</span></div><p className="text-lg xl:text-2xl font-extrabold mt-3 truncate" title={value}>{value}</p></div>;
 }
