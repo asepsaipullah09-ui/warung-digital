@@ -135,3 +135,37 @@ ALTER TABLE public.daily_stock_opnames ADD COLUMN IF NOT EXISTS total_net_profit
 
 ALTER TABLE public.daily_stock_opname_items ADD COLUMN IF NOT EXISTS personal_use_cost_amount DECIMAL(14,2) NOT NULL DEFAULT 0;
 ALTER TABLE public.daily_stock_opname_items ADD COLUMN IF NOT EXISTS net_profit_after_personal_use DECIMAL(14,2) NOT NULL DEFAULT 0;
+
+-- RLS for the current single-user/no-login application.
+-- These policies are intentionally permissive because the app currently has
+-- no authentication. Tighten them before exposing the database publicly.
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_units ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchase_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.personal_usages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_stock_opnames ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_stock_opname_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_adjustments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
+
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'categories','products','product_units','purchases','purchase_items',
+    'personal_usages','daily_stock_opnames','daily_stock_opname_items',
+    'stock_adjustments','stock_movements'
+  ] LOOP
+    EXECUTE format('DROP POLICY IF EXISTS "public_select_%s_warung" ON public.%I', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS "public_insert_%s_warung" ON public.%I', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS "public_update_%s_warung" ON public.%I', t, t);
+    EXECUTE format('DROP POLICY IF EXISTS "public_delete_%s_warung" ON public.%I', t, t);
+    EXECUTE format('CREATE POLICY "public_select_%s_warung" ON public.%I FOR SELECT TO public USING (true)', t, t);
+    EXECUTE format('CREATE POLICY "public_insert_%s_warung" ON public.%I FOR INSERT TO public WITH CHECK (true)', t, t);
+    EXECUTE format('CREATE POLICY "public_update_%s_warung" ON public.%I FOR UPDATE TO public USING (true) WITH CHECK (true)', t, t);
+    EXECUTE format('CREATE POLICY "public_delete_%s_warung" ON public.%I FOR DELETE TO public USING (true)', t, t);
+  END LOOP;
+END $$;
