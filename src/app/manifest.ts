@@ -1,10 +1,13 @@
 import type { MetadataRoute } from 'next';
 
+export const dynamic = 'force-static';
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'WarungKu - Manajemen Warung',
     short_name: 'WarungKu',
-    description: 'Aplikasi manajemen stok, kas, barang masuk, rekap malam, dan laba warung.',
+    description:
+      'Aplikasi manajemen stok, kas, barang masuk, rekap malam, dan laba warung.',
     start_url: '/',
     display: 'standalone',
     background_color: '#f3f5f8',
